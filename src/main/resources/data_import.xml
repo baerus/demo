@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:int-file="http://www.springframework.org/schema/integration/file"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+           http://www.springframework.org/schema/beans/spring-beans.xsd
+           http://www.springframework.org/schema/util
+           http://www.springframework.org/schema/util/spring-util.xsd
+           http://www.springframework.org/schema/integration
+           http://www.springframework.org/schema/integration/spring-integration.xsd
+           http://www.springframework.org/schema/integration/file
+           http://www.springframework.org/schema/integration/file/spring-integration-file.xsd
+           http://www.springframework.org/schema/context
+           http://www.springframework.org/schema/context/spring-context.xsd">
+
+    <bean id="dataImporter" class="com.example.demo.DataImporter" />
+
+    <bean id="XMLFileListFilter" class="org.springframework.integration.file.filters.SimplePatternFileListFilter" >
+        <constructor-arg value="*.xml" />
+    </bean>
+
+    <bean id="XMLFilter" class="org.springframework.integration.file.config.FileListFilterFactoryBean">
+        <property name="filter" ref="XMLFileListFilter" />
+        <property name="preventDuplicates" value="false" />
+    </bean>
+
+    <bean id="importFileComparator" class="com.example.demo.ImportFileComparator" />
+
+    <!--Input channel-->
+    <int-file:inbound-channel-adapter id="FilesInChannel"
+            directory="file:${folder}"
+            filter="XMLFilter"
+            auto-startup="true"
+            comparator="importFileComparator"
+            scan-each-poll="true">
+        <int:poller fixed-rate="1000" time-unit="MILLISECONDS" max-messages-per-poll="1" />
+    </int-file:inbound-channel-adapter>
+
+    <!--Output channel-->
+    <int:recipient-list-router input-channel="FilesOutChannel"
+        default-output-channel="FilesOutSuccessChannel" >
+        <int:recipient channel="FilesOutFailureChannel" selector-expression="headers.containsKey('IMPORT_FAILURE')" />
+    </int:recipient-list-router>
+
+    <!--Success / Failure channel-->
+    <int-file:outbound-channel-adapter id="FilesOutSuccessChannel"
+        directory="file:${folder}/success" delete-source-files="true"
+        filename-generator-expression="new java.text.SimpleDateFormat('yyyy-MM-dd_HH.mm.ss').format(new java.util.Date()) + '_' + payload.name"/>
+    <int-file:outbound-channel-adapter id="FilesOutFailureChannel"
+        directory="file:${folder}/error" delete-source-files="true"
+        filename-generator-expression="new java.text.SimpleDateFormat('yyyy-MM-dd_HH.mm.ss').format(new java.util.Date()) + '_' + payload.name"/>
+
+    <!--Verheiratung zwischen Importer, Input und Output-->
+    <int:service-activator
+        ref="dataImporter"
+        input-channel="FilesInChannel"
+        output-channel="FilesOutChannel" />
+
+</beans>
